@@ -1,0 +1,516 @@
+name: Build Complete VYRO APK (One-Click Master)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Generate Android Shell (com.vyro.app)
+        run: |
+          flutter create --org com.vyro --project-name app .
+
+      - name: Auto-Generate All VYRO Files & Screens
+        run: |
+          mkdir -p lib/screens
+
+          cat << 'EOF' > pubspec.yaml
+          name: app
+          description: VYRO Social, Chat & Gaming App
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.3.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            cupertino_icons: ^1.0.8
+            firebase_core: ^3.3.0
+            firebase_auth: ^5.1.4
+            cloud_firestore: ^5.2.1
+            google_fonts: ^6.2.1
+            intl: ^0.19.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^4.0.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+          cat << 'EOF' > android/app/google-services.json
+          {
+            "project_info": {
+              "project_number": "657599739496",
+              "project_id": "vyro-62f55",
+              "storage_bucket": "vyro-62f55.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:657599739496:android:d4d55d53cc7bba27796ddd",
+                  "android_client_info": {
+                    "package_name": "com.vyro.app"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyBQR_Im26dmM9OXZehjfad82kJgJ7frgQY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+
+          cat << 'EOF' > lib/firebase_options.dart
+          import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+          import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform {
+              if (defaultTargetPlatform == TargetPlatform.android) {
+                return android;
+              }
+              throw UnsupportedError('VYRO is configured for Android.');
+            }
+
+            static const FirebaseOptions android = FirebaseOptions(
+              apiKey: 'AIzaSyBQR_Im26dmM9OXZehjfad82kJgJ7frgQY',
+              appId: '1:657599739496:android:d4d55d53cc7bba27796ddd',
+              messagingSenderId: '657599739496',
+              projectId: 'vyro-62f55',
+              storageBucket: 'vyro-62f55.firebasestorage.app',
+            );
+          }
+          EOF
+
+          cat << 'EOF' > lib/main.dart
+          import 'package:firebase_auth/firebase_auth.dart';
+          import 'package:firebase_core/firebase_core.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter/material.dart';
+          import 'package:google_fonts/google_fonts.dart';
+          import 'firebase_options.dart';
+          import 'screens/auth_screen.dart';
+          import 'screens/feed_screen.dart';
+          import 'screens/search_screen.dart';
+          import 'screens/profile_screen.dart';
+
+          void main() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform,
+            );
+            runApp(const VyroApp());
+          }
+
+          class VyroApp extends StatelessWidget {
+            const VyroApp({super.key});
+
+            static const Color primaryPurple = Color(0xFF6C2BD9);
+            static const Color lightPurple = Color(0xFFF5F3FF);
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'VYRO',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData(
+                  useMaterial3: true,
+                  scaffoldBackgroundColor: Colors.white,
+                  primaryColor: primaryPurple,
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: primaryPurple,
+                    primary: primaryPurple,
+                    surface: Colors.white,
+                  ),
+                  textTheme: GoogleFonts.plusJakartaSansTextTheme(),
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Color(0xFF111827),
+                    elevation: 0,
+                    centerTitle: true,
+                  ),
+                  inputDecorationTheme: InputDecorationTheme(
+                    filled: true,
+                    fillColor: lightPurple,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  elevatedButtonTheme: ElevatedButtonThemeData(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryPurple,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+                home: StreamBuilder<User?>(
+                  stream: FirebaseAuth.instance.authStateChanges(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Scaffold(
+                        body: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasData && snapshot.data != null) {
+                      return const VyroMainShell();
+                    }
+                    return const AuthScreen();
+                  },
+                ),
+              );
+            }
+          }
+
+          class VyroMainShell extends StatefulWidget {
+            const VyroMainShell({super.key});
+
+            @override
+            State<VyroMainShell> createState() => _VyroMainShellState();
+          }
+
+          class _VyroMainShellState extends State<VyroMainShell> {
+            int _index = 0;
+
+            final List<Widget> _screens = const [
+              FeedScreen(),
+              SearchScreen(),
+              ProfileScreen(),
+            ];
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: _screens[_index],
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _index,
+                  backgroundColor: Colors.white,
+                  indicatorColor: VyroApp.lightPurple,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.house),
+                      selectedIcon: Icon(CupertinoIcons.house_fill, color: VyroApp.primaryPurple),
+                      label: 'Feed',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.search),
+                      selectedIcon: Icon(CupertinoIcons.search, color: VyroApp.primaryPurple),
+                      label: 'Search & Follow',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(CupertinoIcons.person_crop_circle),
+                      selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill, color: VyroApp.primaryPurple),
+                      label: 'Profile',
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat << 'EOF' > lib/screens/auth_screen.dart
+          import 'package:cloud_firestore/cloud_firestore.dart';
+          import 'package:firebase_auth/firebase_auth.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter/material.dart';
+          import '../main.dart';
+
+          class AuthScreen extends StatefulWidget {
+            const AuthScreen({super.key});
+
+            @override
+            State<AuthScreen> createState() => _AuthScreenState();
+          }
+
+          class _AuthScreenState extends State<AuthScreen> {
+            final _emailCtrl = TextEditingController();
+            final _passCtrl = TextEditingController();
+            final _userCtrl = TextEditingController();
+            final _nameCtrl = TextEditingController();
+
+            bool _isLogin = true;
+            bool _loading = false;
+            String? _error;
+
+            Future<void> _handleAuth() async {
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+
+              final auth = FirebaseAuth.instance;
+              final db = FirebaseFirestore.instance;
+
+              try {
+                if (_isLogin) {
+                  await auth.signInWithEmailAndPassword(
+                    email: _emailCtrl.text.trim(),
+                    password: _passCtrl.text.trim(),
+                  );
+                } else {
+                  final username = _userCtrl.text.trim().toLowerCase();
+                  final validRegex = RegExp(r'^[a-z0-9_]{3,20}$');
+                  if (!validRegex.hasMatch(username)) {
+                    throw 'Username must be 3-20 lowercase letters, numbers, or _';
+                  }
+
+                  final usernameDoc = await db.collection('usernames').doc(username).get();
+                  if (usernameDoc.exists) {
+                    throw '@$username is already taken!';
+                  }
+
+                  final cred = await auth.createUserWithEmailAndPassword(
+                    email: _emailCtrl.text.trim(),
+                    password: _passCtrl.text.trim(),
+                  );
+
+                  final uid = cred.user!.uid;
+                  final batch = db.batch();
+
+                  batch.set(db.collection('usernames').doc(username), {
+                    'uid': uid,
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+
+                  batch.set(db.collection('users').doc(uid), {
+                    'uid': uid,
+                    'username': username,
+                    'displayName': _nameCtrl.text.trim().isEmpty ? username : _nameCtrl.text.trim(),
+                    'email': _emailCtrl.text.trim(),
+                    'bio': 'Hey! I am on VYRO ✨',
+                    'isPrivate': false,
+                    'followersCount': 0,
+                    'followingCount': 0,
+                    'coins': 100,
+                    'xp': 0,
+                    'level': 1,
+                    'role': 'user',
+                    'isBanned': false,
+                    'blockedUsers': [],
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+
+                  await batch.commit();
+                }
+              } catch (e) {
+                if (mounted) {
+                  setState(() => _error = e.toString().replaceAll('Exception:', ''));
+                }
+              } finally {
+                if (mounted) setState(() => _loading = false);
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const CircleAvatar(
+                            radius: 40,
+                            backgroundColor: VyroApp.primaryPurple,
+                            child: Text(
+                              'V',
+                              style: TextStyle(fontSize: 38, color: Colors.white, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'VYRO',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              color: VyroApp.primaryPurple,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          if (_error != null)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                            ),
+                          if (!_isLogin) ...[
+                            TextField(
+                              controller: _userCtrl,
+                              decoration: const InputDecoration(
+                                hintText: 'Unique Username (e.g. mukesh_01)',
+                                prefixIcon: Icon(CupertinoIcons.at),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _nameCtrl,
+                              decoration: const InputDecoration(
+                                hintText: 'Your Full Name',
+                                prefixIcon: Icon(CupertinoIcons.person),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          TextField(
+                            controller: _emailCtrl,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              hintText: 'Email Address',
+                              prefixIcon: Icon(CupertinoIcons.mail),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _passCtrl,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              hintText: 'Password (6+ chars)',
+                              prefixIcon: Icon(CupertinoIcons.lock),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: _loading ? null : _handleAuth,
+                            child: _loading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                  )
+                                : Text(_isLogin ? 'Log In' : 'Create Account (+100 Coins)'),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _isLogin = !_isLogin;
+                              _error = null;
+                            }),
+                            child: Text(
+                              _isLogin ? 'New user? Create VYRO Account' : 'Already have an account? Log In',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat << 'EOF' > lib/screens/feed_screen.dart
+          import 'package:cloud_firestore/cloud_firestore.dart';
+          import 'package:firebase_auth/firebase_auth.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter/material.dart';
+          import '../main.dart';
+
+          class FeedScreen extends StatefulWidget {
+            const FeedScreen({super.key});
+
+            @override
+            State<FeedScreen> createState() => _FeedScreenState();
+          }
+
+          class _FeedScreenState extends State<FeedScreen> {
+            final _postCtrl = TextEditingController();
+
+            Future<void> _createPost() async {
+              final text = _postCtrl.text.trim();
+              if (text.isEmpty) return;
+
+              final uid = FirebaseAuth.instance.currentUser!.uid;
+              final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+              final userData = userDoc.data() ?? {};
+
+              await FirebaseFirestore.instance.collection('posts').add({
+                'authorUid': uid,
+                'authorUsername': userData['username'] ?? 'user',
+                'authorName': userData['displayName'] ?? 'VYRO User',
+                'caption': text,
+                'likes': [],
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+
+              _postCtrl.clear();
+              if (mounted) Navigator.pop(context);
+            }
+
+            void _showNewPostSheet() {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                builder: (ctx) => Padding(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Create VYRO Post', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _postCtrl,
+                        maxLines: 4,
+                        decoration: const InputDecoration(hintText: 'Write something with #hashtags...'),
+                      ),
+                      const SizedBox(height: 14),
+                      ElevatedButton(
+                        onPressed: _createPost,
+                        child: const Text('Publish Now'),
+ 
